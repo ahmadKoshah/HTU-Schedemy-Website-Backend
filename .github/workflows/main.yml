@@ -1,0 +1,93 @@
+name: deploy AMI
+on:
+  push:
+    branches:
+    - main
+env:
+  AWS_REGION: us-east-1
+  INSTANCE_TYPE: t3.small
+jobs:
+  deploy_ami:
+    name: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        
+      - name: java-17 set up
+        uses: actions/setup-java@v4
+        with: 
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+        
+      - name: Aws login
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Ansible
+        run: sudo apt update && sudo apt install -y ansible
+        
+      - name:  SSH Key Setup
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+      - name: Launch Instance
+        id: launch
+        run: |
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id ${{ secrets.BASE_AMI_ID }} \
+            --count 1 \
+            --instance-type ${{ env.INSTANCE_TYPE }} \
+            --key-name pipeline-key \
+            --security-group-ids ${{ secrets.BUILDER_SG_ID }} \
+            --query 'Instances[0].InstanceId' \
+            --output text)
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+      
+      - name: Run Ansible 
+        run: |
+          echo "Waiting for SSH..."
+          for i in {1..20}; do ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@${{ steps.launch.outputs.public_ip }} "echo ready" && break || sleep 10; done
+
+          echo "[builder]" > inventory.ini
+          echo "${{ steps.launch.outputs.public_ip }} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_host_key_checking=False" >> inventory.ini
+
+          ansible-playbook -i inventory.ini ansible/setup.yml
+      - name: Create AMI
+        id: bake
+        run: |
+          AMI_ID=$(aws ec2 create-image \
+            --instance-id ${{ steps.launch.outputs.instance_id }} \
+            --name "Schedemy-v${{ github.run_number }}" \
+            --no-reboot \
+            --query 'ImageId' \
+            --output text)
+          
+          aws ec2 wait image-available --image-ids $AMI_ID
+          echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
+
+      - name: Terminate Builder
+        if: always()
+        run: aws ec2 terminate-instances --instance-ids ${{ steps.launch.outputs.instance_id }}
+
+      - name: Update ASG
+        run: |
+          aws ec2 create-launch-template-version \
+            --launch-template-name Schedemy_website_template \
+            --source-version '$Latest' \
+            --launch-template-data "{\"ImageId\":\"${{ steps.bake.outputs.ami_id }}\"}"
+
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name Schedemy-ASG
