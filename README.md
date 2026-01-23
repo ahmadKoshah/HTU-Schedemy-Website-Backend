@@ -36,7 +36,7 @@ The infrastructure should support safe application updates without service inter
 
 Tasks
 
-Task 1 – Architecture Design Propose an AWS-based infrastructure architecture that satisfies the above requirements. Clearly explain the services used and how they contribute to availability, scalability, global access, monitoring, and notification.
+Task 1  – Architecture Design Propose an AWS-based infrastructure architecture that satisfies the above requirements. Clearly explain the services used and how they contribute to availability, scalability, global access, monitoring, and notification.
 
 Task 2 – Implementation Implement the proposed solution by:
 
@@ -49,3 +49,4 @@ Configuring the required AWS services to support domain management, global acces
 Ensuring that the application can be updated without service interruption.
 
 The implementation should follow best practices and demonstrate a clear understanding of cloud infrastructure concepts.
+hello
