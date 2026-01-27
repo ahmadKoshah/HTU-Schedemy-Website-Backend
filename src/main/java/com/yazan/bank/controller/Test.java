@@ -27,4 +27,9 @@ public class Test {
     public int g(){
         return 1;
     }
+    @GetMapping("/string")
+    public String shlol(){
+        return "shlol";
+    }
+
 }
