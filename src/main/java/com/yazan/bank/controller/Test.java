@@ -25,7 +25,7 @@ public class Test {
 
     @GetMapping("/one")
     public int g(){
-        return 1;
+        return 5;
     }
     @GetMapping("/string")
     public String shlol(){
