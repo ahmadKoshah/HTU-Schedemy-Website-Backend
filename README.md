@@ -50,3 +50,5 @@ Ensuring that the application can be updated without service interruption.
 
 The implementation should follow best practices and demonstrate a clear understanding of cloud infrastructure concepts.
 hello
+
+hosam
