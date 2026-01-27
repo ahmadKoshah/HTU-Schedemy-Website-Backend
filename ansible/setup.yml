@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   vars:
-    jar_source: "./target/EduSched-0.0.1-SNAPSHOT.jar"
+    jar_source: "{{ project_root }}/target/EduSched-0.0.1-SNAPSHOT.jar"
     dest_path: "/opt/myapp/EduSched.jar"
   tasks:
     - name: Install Java 17
@@ -16,7 +16,7 @@
         state: directory
         owner: ec2-user
         group: ec2-user
-        mode: '0700'
+        mode: '0755'
     - name: Copy JAR file
       copy:
         src: "{{ jar_source }}"
