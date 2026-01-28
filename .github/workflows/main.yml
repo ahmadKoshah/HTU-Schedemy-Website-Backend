@@ -22,7 +22,6 @@ jobs:
 
       - name: Build with Maven
         run: mvn clean package -DskipTests
-      
       - name: Verify Build Output
         run: |
           ls -lh target/
@@ -41,7 +40,7 @@ jobs:
       - name: Install Ansible
         run: sudo apt update && sudo apt install -y ansible
         
-      - name: SSH Key Setup
+      - name:  SSH Key Setup
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
@@ -51,78 +50,52 @@ jobs:
         id: launch
         run: |
           INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ami-0453ec754f44f9a4a \
+            --image-id ${{ secrets.BASE_AMI_ID }} \
             --count 1 \
             --instance-type ${{ env.INSTANCE_TYPE }} \
-            --key-name vockey \
-            --security-group-ids sg-03063593450702206 \
-            --subnet-id subnet-092591605330a103c \
-            --associate-public-ip-address \
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Ansible-Builder}]' \
+            --key-name pipeline-key \
+            --security-group-ids ${{ secrets.BUILDER_SG_ID }} \
             --query 'Instances[0].InstanceId' \
             --output text)
-          
-          echo "Instance $INSTANCE_ID launched."
-          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-          
-          PUBLIC_IP=$(aws ec2 describe-instances \
-            --instance-ids $INSTANCE_ID \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-            --output text)
-            
           echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
           echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
-          echo "Instance Public IP: $PUBLIC_IP"
-
-      - name: Run Ansible
+      
+      - name: Run Ansible 
         run: |
           echo "Waiting for SSH..."
           for i in {1..20}; do ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@${{ steps.launch.outputs.public_ip }} "echo ready" && break || sleep 10; done
 
           echo "[builder]" > inventory.ini
           echo "${{ steps.launch.outputs.public_ip }} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_host_key_checking=False" >> inventory.ini
-          
           echo "--- CHECKPOINT 2: Project Root is ${{ github.workspace }} ---"
-          
           ansible-playbook -i inventory.ini ansible/setup.yml \
             -e "project_root=${{ github.workspace }}"
-
-      # ========================================================
-      # DEBUG MODE: EVERYTHING BELOW IS PAUSED/DISABLED
-      # ========================================================
-
-      - name: PAUSE FOR DEBUGGING (1 Hour)
+      - name: Create AMI
+        id: bake
         run: |
-          echo "---------------------------------------------------"
-          echo "PIPELINE PAUSED. THE INSTANCE IS RUNNING."
-          echo "SSH COMMAND: ssh -i ~/.ssh/id_rsa ec2-user@${{ steps.launch.outputs.public_ip }}"
-          echo "---------------------------------------------------"
-          sleep 3600
+          AMI_ID=$(aws ec2 create-image \
+            --instance-id ${{ steps.launch.outputs.instance_id }} \
+            --name "Schedemy-v${{ github.run_number }}" \
+            --no-reboot \
+            --query 'ImageId' \
+            --output text)
+          
+          aws ec2 wait image-available --image-ids $AMI_ID
+          echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
 
-      # - name: Create AMI
-      #   id: bake
-      #   run: |
-      #     AMI_ID=$(aws ec2 create-image \
-      #       --instance-id ${{ steps.launch.outputs.instance_id }} \
-      #       --name "Schedemy-v${{ github.run_number }}" \
-      #       --no-reboot \
-      #       --query 'ImageId' \
-      #       --output text)
-      #     
-      #     aws ec2 wait image-available --image-ids $AMI_ID
-      #     echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
+     # - name: Terminate Builder
+    #    if: always()
+    #    run: aws ec2 terminate-instances --instance-ids ${{ steps.launch.outputs.instance_id }}
 
-      # - name: Terminate Builder
-      #   if: always()
-      #   run: aws ec2 terminate-instances --instance-ids ${{ steps.launch.outputs.instance_id }}
+      - name: Update ASG
+        run: |
+          aws ec2 create-launch-template-version \
+            --launch-template-name Schedemy_website_template \
+            --source-version '$Latest' \
+            --launch-template-data "{\"ImageId\":\"${{ steps.bake.outputs.ami_id }}\"}"
 
-      # - name: Update ASG
-      #   run: |
-      #     aws ec2 create-launch-template-version \
-      #       --launch-template-name Schedemy_website_template \
-      #       --source-version \$Latest \
-      #       --launch-template-data "{\"ImageId\":\"${{ steps.bake.outputs.ami_id }}\"}"
-      #
-      #     aws autoscaling start-instance-refresh \
-      #       --auto-scaling-group-name Schedemy-ASG \
-      #       --preferences '{"InstanceWarmup": 300, "MinHealthyPercentage": 90}'
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name Schedemy-ASG
