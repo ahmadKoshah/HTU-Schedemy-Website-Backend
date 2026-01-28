@@ -70,7 +70,7 @@ jobs:
 
           echo "[builder]" > inventory.ini
           echo "${{ steps.launch.outputs.public_ip }} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_host_key_checking=False" >> inventory.ini
-
+          echo "--- CHECKPOINT 2: Project Root is ${{ github.workspace }} ---"
           ansible-playbook -i inventory.ini ansible/setup.yml \
             -e "project_root=${{ github.workspace }}"
       - name: Create AMI

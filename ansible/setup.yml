@@ -6,6 +6,9 @@
     jar_source: "{{ project_root }}/target/EduSched-0.0.1-SNAPSHOT.jar"
     dest_path: "/opt/myapp/EduSched.jar"
   tasks:
+    - name: Debug Path
+      debug:
+        msg: "Ansible is looking for JAR at: {{ jar_source }}"
     - name: Install Java 17
       dnf:
         name: java-17-amazon-corretto-headless
@@ -40,6 +43,13 @@
 
           [Install]
           WantedBy=multi-user.target
+    - name: Final Verification Check
+      shell: ls -lh /opt/myapp/EduSched.jar
+      register: remote_ls
+
+    - name: Output Remote File Size
+      debug:
+        msg: "REMOTE CHECK: {{ remote_ls.stdout }}"
     - name: Enable service
       systemd:
         name: myapp
