@@ -29,7 +29,7 @@ public class Test {
     }
     @GetMapping("/string")
     public String shlol(){
-        return "Shlolification";
+        return "Laith";
     }
 
 }
