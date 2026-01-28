@@ -73,6 +73,10 @@ jobs:
           echo "--- CHECKPOINT 2: Project Root is ${{ github.workspace }} ---"
           ansible-playbook -i inventory.ini ansible/setup.yml \
             -e "project_root=${{ github.workspace }}"
+      - name: Stabilize Instance
+        run: |
+          echo "Waiting 30 seconds for disk sync and service startup..."
+          sleep 30
       - name: Create AMI
         id: bake
         run: |
@@ -86,9 +90,9 @@ jobs:
           aws ec2 wait image-available --image-ids $AMI_ID
           echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
 
-     # - name: Terminate Builder
-    #    if: always()
-    #    run: aws ec2 terminate-instances --instance-ids ${{ steps.launch.outputs.instance_id }}
+      - name: Terminate Builder
+        if: always()
+        run: aws ec2 terminate-instances --instance-ids ${{ steps.launch.outputs.instance_id }}
 
       - name: Update ASG
         run: |

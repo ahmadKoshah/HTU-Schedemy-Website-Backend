@@ -43,14 +43,14 @@
 
           [Install]
           WantedBy=multi-user.target
-    - name: Final Verification Check
-      shell: ls -lh /opt/myapp/EduSched.jar
-      register: remote_ls
+    - name: Reload Systemd
+      systemd:
+        daemon_reload: yes
 
-    - name: Output Remote File Size
-      debug:
-        msg: "REMOTE CHECK: {{ remote_ls.stdout }}"
-    - name: Enable service
+    - name: Enable and Start Service
       systemd:
         name: myapp
         enabled: yes
+        state: started
+    - name: Force Disk Sync
+      shell: sync
