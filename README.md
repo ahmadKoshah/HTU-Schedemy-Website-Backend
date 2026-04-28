@@ -21,7 +21,7 @@ The university plans to deploy the system as a production-ready platform and has
 The front-end application must be deployed using AWS Amplify.
 
 The back-end application must be deployed on AWS using EC2 instances.
-
+s
 The application must be accessible through a custom domain name that can be easily managed and updated.
 
 The system must support high availability and automatic scaling to handle increased usage during peak registration periods.
